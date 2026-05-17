@@ -1,4 +1,35 @@
-# Islamic Chatbot — NestJS Backend
+# Noor AI — Islamic Chatbot
+
+![Noor AI preview](https://raw.githubusercontent.com/ArfinHayet/noor-ai-frontend/main/public/favicon-social.png)
+
+Noor AI is a bilingual Islamic AI assistant built to help Muslims ask questions, explore daily duas, check prayer-time information, and learn from Quran- and Hadith-oriented guidance in English and Bangla.
+
+The app is designed as a focused Islamic knowledge companion: fast to open, mobile-friendly, installable as a PWA, and organized around common daily needs like Salah, duas, reminders, and general Islamic questions.
+
+Noor AI provides educational Islamic information. For personal religious rulings, always consult a qualified scholar, mufti, or local imam.
+
+## Live App
+
+Production URL: https://www.noorai.online
+
+## Features
+
+- AI Islamic chat: Ask questions about Quran, Hadith, Salah, Ramadan, Zakat, duas, Islamic manners, and daily practice.
+- Streaming responses: Assistant answers stream into the chat interface for a faster, more natural experience.
+- Markdown rendering: AI responses support structured Markdown with headings, lists, quotes, tables, and code-style formatting.
+- English and Bangla support: Switch the UI language between English and Bangla.
+- Daily duas: Browse and search duas by category, with Arabic text, transliteration, source, and English/Bangla meanings.
+- Prayer times: View daily prayer-time information with a live clock, countdown, and madhab selector.
+- Responsive app shell: Desktop sidebar, mobile drawer, mobile header, and centered chat layout.
+- Dark mode: Theme support with persisted user preference.
+- PWA-ready: Includes manifest and service worker registration.
+- SEO-friendly public files: Includes sitemap, robots.txt, and llms.txt for crawlers and AI agents.
+
+---
+
+## Backend
+
+### Islamic Chatbot — NestJS Backend
 
 Islamic Q&A chatbot REST API. Powered by Google Gemini 1.5 Flash with tool-augmented Quran/Hadith lookups, pgvector RAG caching, and `@nestjs/throttler` rate limiting. No authentication required.
 
