@@ -16,7 +16,6 @@ interface TurnstileAccessOptions {
 
 interface TurnstilePassPayload {
   exp: number;
-  ip: string;
   v: 1;
 }
 
@@ -58,14 +57,14 @@ export class TurnstileService {
 
   async verifyAccess({ captchaPass, captchaToken, ip }: TurnstileAccessOptions): Promise<void> {
     if (!this.getSecretKey()) return;
-    if (this.isValidPass(captchaPass, ip)) return;
+    if (this.isValidPass(captchaPass)) return;
 
     await this.verifyToken(captchaToken, ip);
   }
 
-  createPass(ip: string): TurnstilePass {
+  createPass(): TurnstilePass {
     const expiresAtMs = Date.now() + this.getPassTtlMs();
-    const payload: TurnstilePassPayload = { exp: expiresAtMs, ip: this.getIpFingerprint(ip), v: 1 };
+    const payload: TurnstilePassPayload = { exp: expiresAtMs, v: 1 };
     const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
     const signature = this.signPassBody(body);
 
@@ -75,7 +74,7 @@ export class TurnstileService {
     };
   }
 
-  isValidPass(pass: string | undefined, ip: string): boolean {
+  isValidPass(pass: string | undefined): boolean {
     if (!this.getSecretKey() || !pass) return false;
 
     const [body, signature] = pass.split('.');
@@ -94,7 +93,7 @@ export class TurnstileService {
 
     try {
       const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as TurnstilePassPayload;
-      return payload.v === 1 && payload.exp > Date.now() && payload.ip === this.getIpFingerprint(ip);
+      return payload.v === 1 && payload.exp > Date.now();
     } catch {
       return false;
     }
@@ -110,9 +109,5 @@ export class TurnstileService {
 
   private signPassBody(body: string): string {
     return createHmac('sha256', this.getSecretKey()).update(body).digest('base64url');
-  }
-
-  private getIpFingerprint(ip: string): string {
-    return createHmac('sha256', this.getSecretKey()).update(ip || 'unknown').digest('base64url');
   }
 }

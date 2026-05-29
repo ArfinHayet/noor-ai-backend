@@ -85,7 +85,7 @@ export class ChatController {
   async createChatTurnstilePass(@Body() dto: TurnstilePassDto, @Req() req: Request): Promise<TurnstilePass> {
     const ip = req.ip ?? '';
     await this.turnstileService.verifyToken(dto.captchaToken, ip);
-    return this.turnstileService.createPass(ip);
+    return this.turnstileService.createPass();
   }
 
   // @Post()
