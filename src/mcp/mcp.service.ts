@@ -311,8 +311,8 @@ export class McpService {
         : this.getTodayGregorianDate();
       const gregorianToHijri = await this.convertGregorianToHijri(gregorianDate, adjustment);
       const result: HijriCalendarResult = {
-        source: 'AlAdhan Islamic Calendar API',
-        note: 'AlAdhan Hijri dates are calculated mathematically. Local moon-sighting authorities may differ by one day.',
+        source: 'NoorAi Hijri Calendar',
+        note: 'NoorAi Hijri dates are calculated mathematically. Local moon-sighting authorities may differ by one day.',
         gregorianToHijri,
       };
 

@@ -49,7 +49,7 @@ export const ISLAMIC_TOOLS = [
   },
   {
     name: 'get_hijri_calendar',
-    description: 'Get Hijri calendar information from AlAdhan. ALWAYS use this tool when the user asks for the current Hijri date, Islamic calendar date, Hijri/Gregorian conversion, a Hijri month calendar, Ramadan/Eid dates, or when Eid will be. For current Hijri date, call without dates so today is used. For Eid, pass the relevant Hijri year if known; otherwise omit it and use the returned current Hijri year.',
+    description: 'Get Hijri calendar information from NoorAi. ALWAYS use this tool when the user asks for the current Hijri date, Islamic calendar date, Hijri/Gregorian conversion, a Hijri month calendar, Ramadan/Eid dates, or when Eid will be. For current Hijri date, call without dates so today is used. For Eid, pass the relevant Hijri year if known; otherwise omit it and use the returned current Hijri year.',
     parameters: {
       type: 'object',
       properties: {
