@@ -277,6 +277,7 @@ export class GeminiService {
       // Iterate stream chunks immediately — yield text as it arrives (true streaming).
       // If a function-call chunk is detected, break and handle it synchronously.
       let isFunctionCallTurn = false;
+      let streamedText = '';
       for await (const chunk of streamResult.stream) {
         const chunkParts = chunk.candidates?.[0]?.content?.parts ?? [];
         if (chunkParts.some((p) => 'functionCall' in p && p.functionCall)) {
@@ -284,10 +285,19 @@ export class GeminiService {
           break;
         }
         const text = chunk.text();
-        if (text) yield { type: 'chunk', text };
+        if (text) {
+          streamedText += text;
+          yield { type: 'chunk', text };
+        }
       }
 
       if (!isFunctionCallTurn) {
+        if (!streamedText) {
+          const response = await streamResult.response;
+          const text = response.text();
+          if (text) yield { type: 'chunk', text };
+        }
+
         return; // Text turn fully streamed
       }
 

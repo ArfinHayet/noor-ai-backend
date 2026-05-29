@@ -115,6 +115,10 @@ function isQuranRecitationMedia(value: unknown): value is QuranRecitationMedia {
   );
 }
 
+function getMediaFallbackReply(media: QuranRecitationMedia): string {
+  return `Here is Surah ${media.surahName} recited by ${media.reciterName}.`;
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -309,6 +313,11 @@ export class ChatService {
     } catch (err) {
       userHistory.pop();
       throw err;
+    }
+
+    if (!fullReply.trim() && media) {
+      fullReply = getMediaFallbackReply(media);
+      yield { type: 'chunk', text: fullReply };
     }
 
     const isRefusal = fullReply.startsWith("I'm only able to answer Islamic questions");
