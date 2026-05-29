@@ -11,6 +11,55 @@ interface PrayerTimesResponse {
   };
 }
 
+interface AladhanDate {
+  date: string;
+  format: string;
+  day: string;
+  weekday: {
+    en: string;
+    ar: string;
+  };
+  month: {
+    number: number;
+    en: string;
+    ar: string;
+  };
+  year: string;
+  designation: {
+    abbreviated: string;
+    expanded: string;
+  };
+  holidays?: string[];
+}
+
+interface AladhanDatePair {
+  readable: string;
+  timestamp: string;
+  gregorian: AladhanDate;
+  hijri: AladhanDate;
+}
+
+interface HijriCalendarResponse {
+  data: AladhanDatePair | AladhanDatePair[];
+}
+
+interface HijriCalendarResult {
+  source: string;
+  note: string;
+  today?: AladhanDatePair;
+  gregorianToHijri?: AladhanDatePair;
+  hijriToGregorian?: AladhanDatePair;
+  hijriMonthCalendar?: Array<{
+    gregorian: AladhanDate;
+    hijri: AladhanDate;
+  }>;
+  eidDates?: {
+    hijriYear: string;
+    eidAlFitr: AladhanDatePair;
+    eidAlAdha: AladhanDatePair;
+  };
+}
+
 interface QuranResult {
   reference: string;
   arabicName: string;
@@ -39,6 +88,7 @@ type ToolResult =
   | QuranResult[]
   | HadithResult[]
   | Record<string, string>
+  | HijriCalendarResult
   | NotFoundResult
   | ErrorResult;
 
@@ -107,6 +157,8 @@ export class McpService {
         return this.searchHadithByTopic(toolInput.keyword, toolInput.collection);
       case 'get_prayer_times':
         return this.getPrayerTimes(toolInput.city, toolInput.country);
+      case 'get_hijri_calendar':
+        return this.getHijriCalendar(toolInput);
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -172,7 +224,7 @@ export class McpService {
     country: string,
   ): Promise<Record<string, string> | ErrorResult> {
     try {
-      const url = `https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&method=2`;
+      const url = `https://api.aladhan.com/v1/timingsByCity?city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}&school=1`;
       const response = await axios.get<PrayerTimesResponse>(url);
       return response.data.data.timings;
     } catch (error) {
@@ -182,5 +234,118 @@ export class McpService {
       return { error: `Failed to get prayer times: ${(error as Error).message}` };
     }
   }
-}
 
+  private getTodayGregorianDate(): string {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+
+    return `${day}-${month}-${year}`;
+  }
+
+  private getApiAdjustmentParam(adjustment?: string): string {
+    const numericAdjustment = Number(adjustment ?? 0);
+
+    if (!Number.isInteger(numericAdjustment) || numericAdjustment < -2 || numericAdjustment > 2) {
+      return '0';
+    }
+
+    return String(numericAdjustment);
+  }
+
+  private async convertGregorianToHijri(
+    gregorianDate: string,
+    adjustment: string,
+  ): Promise<AladhanDatePair> {
+    const response = await axios.get<HijriCalendarResponse>(
+      `https://api.aladhan.com/v1/gToH?date=${encodeURIComponent(gregorianDate)}&adjustment=${encodeURIComponent(adjustment)}`,
+    );
+
+    return response.data.data as AladhanDatePair;
+  }
+
+  private async convertHijriToGregorian(
+    hijriDate: string,
+    adjustment: string,
+  ): Promise<AladhanDatePair> {
+    const response = await axios.get<HijriCalendarResponse>(
+      `https://api.aladhan.com/v1/hToG?date=${encodeURIComponent(hijriDate)}&adjustment=${encodeURIComponent(adjustment)}`,
+    );
+
+    return response.data.data as AladhanDatePair;
+  }
+
+  private async getHijriMonthCalendar(
+    hijriMonth: string,
+    hijriYear: string,
+    adjustment: string,
+  ): Promise<HijriCalendarResult['hijriMonthCalendar']> {
+    const response = await axios.get<HijriCalendarResponse>(
+      `https://api.aladhan.com/v1/hToGCalendar/${encodeURIComponent(hijriMonth)}/${encodeURIComponent(hijriYear)}?adjustment=${encodeURIComponent(adjustment)}`,
+    );
+    const dates = response.data.data as AladhanDatePair[];
+
+    return dates.map((date) => ({
+      gregorian: date.gregorian,
+      hijri: date.hijri,
+    }));
+  }
+
+  private isValidDateString(date?: string): date is string {
+    return Boolean(date && /^\d{2}-\d{2}-\d{4}$/.test(date));
+  }
+
+  private isValidNumberString(value?: string): value is string {
+    return Boolean(value && /^\d+$/.test(value));
+  }
+
+  private async getHijriCalendar(
+    input: Record<string, string>,
+  ): Promise<HijriCalendarResult | ErrorResult> {
+    const adjustment = this.getApiAdjustmentParam(input.adjustment);
+
+    try {
+      const gregorianDate = this.isValidDateString(input.gregorianDate)
+        ? input.gregorianDate
+        : this.getTodayGregorianDate();
+      const gregorianToHijri = await this.convertGregorianToHijri(gregorianDate, adjustment);
+      const result: HijriCalendarResult = {
+        source: 'AlAdhan Islamic Calendar API',
+        note: 'AlAdhan Hijri dates are calculated mathematically. Local moon-sighting authorities may differ by one day.',
+        gregorianToHijri,
+      };
+
+      if (!input.gregorianDate) {
+        result.today = gregorianToHijri;
+      }
+
+      if (this.isValidDateString(input.hijriDate)) {
+        result.hijriToGregorian = await this.convertHijriToGregorian(input.hijriDate, adjustment);
+      }
+
+      const hijriYear = this.isValidNumberString(input.hijriYear)
+        ? input.hijriYear
+        : gregorianToHijri.hijri.year;
+
+      result.eidDates = {
+        hijriYear,
+        eidAlFitr: await this.convertHijriToGregorian(`01-10-${hijriYear}`, adjustment),
+        eidAlAdha: await this.convertHijriToGregorian(`10-12-${hijriYear}`, adjustment),
+      };
+
+      if (this.isValidNumberString(input.hijriMonth)) {
+        result.hijriMonthCalendar = await this.getHijriMonthCalendar(
+          input.hijriMonth,
+          hijriYear,
+          adjustment,
+        );
+      }
+
+      return result;
+    } catch (error) {
+      this.logger.warn(`Hijri calendar lookup failed: ${(error as Error).message}`);
+      return { error: `Failed to get Hijri calendar: ${(error as Error).message}` };
+    }
+  }
+}

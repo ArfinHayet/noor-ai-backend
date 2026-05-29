@@ -23,7 +23,9 @@ LANGUAGE DETECTION:
 - CRITICAL: ALWAYS write your ENTIRE response in the same language the user used — this includes explanations, Quran translations, AND hadith text. Tool results are only raw data; you must translate any English or Arabic content from tools into the user's language before including it in the response. Never output English sentences to a user who wrote in Bengali, Turkish, or any other language.
 
 MANDATORY TOOL USAGE — FOLLOW THESE EVERY TIME:
-For ANY Islamic question — even if the user does NOT explicitly mention Quran or Hadith — you MUST call BOTH search tools before composing your answer. The user asking "নিসাব পরিমাণ সম্পদ কত?" or "What is the ruling on fasting?" is the same as asking for Quran and Hadith evidence. Always search both.
+For ANY Islamic teaching, ruling, worship, history, Quran, or Hadith question — even if the user does NOT explicitly mention Quran or Hadith — you MUST call BOTH search tools before composing your answer. The user asking "নিসাব পরিমাণ সম্পদ কত?" or "What is the ruling on fasting?" is the same as asking for Quran and Hadith evidence. Always search both.
+
+For real-time utility questions like prayer times, current Hijri date, Islamic calendar dates, Gregorian/Hijri conversion, Ramadan/Eid dates, or "when will Eid be?", call the specialized time/calendar tool first. Quran and Hadith searches are not required for these utility lookups unless the user also asks for evidence, rulings, virtues, or explanation.
 
 1. QURAN VERSES:
    - NEVER quote or reference a Quran verse from memory
@@ -49,6 +51,12 @@ For ANY Islamic question — even if the user does NOT explicitly mention Quran 
    - NEVER ask the user for their city or country — it is auto-detected and will appear in the USER LOCATION section below
    - Use the USER LOCATION city and country DIRECTLY as arguments to "get_prayer_times" WITHOUT asking the user
    - Only ask for location if the USER LOCATION section is completely absent AND the user has not mentioned a city or country
+
+4. HIJRI CALENDAR:
+   - ALWAYS call "get_hijri_calendar" when the user asks for the current Hijri date, Islamic calendar date, Hijri/Gregorian conversion, Ramadan dates, Eid dates, or "when will Eid be?"
+   - For current Hijri date, call it without date arguments so today's Gregorian date is used
+   - For Eid questions, use the returned "eidDates"; Eid al-Fitr is 1 Shawwal and Eid al-Adha is 10 Dhul Hijjah in the returned Hijri year
+   - Mention that Noor AI uses calculated Hijri dates and local moon-sighting authorities can differ by one day
 
 ANSWER QUALITY RULES:
 - Always cite exact sources returned by tools (never fabricate references)
@@ -136,10 +144,40 @@ export class ChatService {
     return false;
   }
 
+  /**
+   * Returns true if the message asks for current or future Islamic calendar data.
+   * Hijri calendar answers are date-sensitive and must not come from cache.
+   */
+  private isHijriCalendarQuery(message: string): boolean {
+    const lower = message.toLowerCase();
+
+    // English and common romanised terms
+    if (/hijri|islamic\s*calendar|islamic\s*date|arabic\s*date|lunar\s*date/.test(lower)) return true;
+    if (/\beid\b|eid\s*al[-\s]*(fitr|adha)|ramadan\s*(date|calendar|start|begin|when)/.test(lower)) return true;
+    if (/shawwal|dhul\s*hijjah|zul\s*hijjah|dhu\s*al[-\s]*hijjah/.test(lower)) return true;
+    if (/gregorian\s*to\s*hijri|hijri\s*to\s*gregorian/.test(lower)) return true;
+
+    // Bengali Unicode
+    if (/হিজরি|হিজরী|ইসলামিক\s*ক্যালেন্ডার|ইসলামি\s*তারিখ|আরবি\s*তারিখ/.test(message)) return true;
+    if (/ঈদ|ইদ|রমজান|রামাদান|শাওয়াল|শাওয়াল|জিলহজ|যিলহজ|জুলহজ/.test(message)) return true;
+
+    // Arabic
+    if (/هجري|التقويم\s*الإسلامي|التاريخ\s*الإسلامي|عيد\s*الفطر|عيد\s*الأضحى|رمضان|شوال|ذو\s*الحجة/.test(message)) return true;
+
+    // Turkish / Indonesian / Malay
+    if (/hicri|islam\s*takvimi|ramazan|lebaran|idul\s*(fitri|adha)|kalender\s*hijriah|tanggal\s*hijriah/.test(lower)) return true;
+
+    return false;
+  }
+
+  private shouldSkipCache(message: string): boolean {
+    return this.isPrayerTimeQuery(message) || this.isHijriCalendarQuery(message);
+  }
+
   async chat(userId: string, message: string, location?: GeoLocation | null): Promise<ChatResponse> {
     // 1. Generate embedding for incoming message (normalized for consistent cache keys)
     const normalizedMessage = this.normalizeQuery(message);
-    const skipCache = this.isPrayerTimeQuery(message);
+    const skipCache = this.shouldSkipCache(message);
     const embedding = skipCache ? [] : await this.geminiService.generateEmbedding(normalizedMessage);
 
     // 2. Search RAG cache (skip for real-time queries like prayer times)
@@ -195,7 +233,7 @@ export class ChatService {
 
   async *chatStream(userId: string, message: string, location?: GeoLocation | null): AsyncGenerator<StreamChunk> {
     const normalizedMessage = this.normalizeQuery(message);
-    const skipCache = this.isPrayerTimeQuery(message);
+    const skipCache = this.shouldSkipCache(message);
     const embedding = skipCache ? [] : await this.geminiService.generateEmbedding(normalizedMessage);
 
     // Cache hit — yield full answer as one chunk (skip for real-time queries)

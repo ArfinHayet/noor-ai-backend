@@ -47,4 +47,33 @@ export const ISLAMIC_TOOLS = [
       required: ['city', 'country'],
     },
   },
+  {
+    name: 'get_hijri_calendar',
+    description: 'Get Hijri calendar information from AlAdhan. ALWAYS use this tool when the user asks for the current Hijri date, Islamic calendar date, Hijri/Gregorian conversion, a Hijri month calendar, Ramadan/Eid dates, or when Eid will be. For current Hijri date, call without dates so today is used. For Eid, pass the relevant Hijri year if known; otherwise omit it and use the returned current Hijri year.',
+    parameters: {
+      type: 'object',
+      properties: {
+        gregorianDate: {
+          type: 'string',
+          description: 'Optional Gregorian date to convert to Hijri in DD-MM-YYYY format. Omit for today.',
+        },
+        hijriDate: {
+          type: 'string',
+          description: 'Optional Hijri date to convert to Gregorian in DD-MM-YYYY format.',
+        },
+        hijriMonth: {
+          type: 'string',
+          description: 'Optional Hijri month number, 1-12, for a full Hijri month calendar.',
+        },
+        hijriYear: {
+          type: 'string',
+          description: 'Optional Hijri year, e.g. 1447. Use this for Eid/Ramadan calendar questions when the user mentions a Hijri year.',
+        },
+        adjustment: {
+          type: 'string',
+          description: 'Optional day adjustment for moon-sighting differences, e.g. -1, 0, or 1. Default: 0.',
+        },
+      },
+    },
+  },
 ];
