@@ -23,4 +23,12 @@ export default () => ({
     ttl: parseInt(process.env.THROTTLE_TTL || '60000'),
     limit: parseInt(process.env.THROTTLE_LIMIT || '20'),
   },
+  supabase: {
+    url: process.env.SUPABASE_URL ?? '',
+    anonKey: process.env.SUPABASE_ANON_KEY ?? '',
+    adminEmails: (process.env.SUPABASE_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  },
 });

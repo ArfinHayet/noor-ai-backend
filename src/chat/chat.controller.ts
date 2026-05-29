@@ -2,10 +2,11 @@ import { BadRequestException, Controller, Post, Get, Body, Req, Res, UseGuards, 
 import { Request, Response } from 'express';
 import axios from 'axios';
 import { IpDailyLimitGuard } from '../common/guards/ip-daily-limit.guard';
+import { SupabaseAdminGuard } from '../common/guards/supabase-admin.guard';
 import { ChatService, ChatResponse } from './chat.service';
 import { ChatDto } from './dto/chat.dto';
 import { GeoService } from '../common/services/geo.service';
-import { MessageLogService } from './services/message-log.service';
+import { MessageLogListResult, MessageLogService } from './services/message-log.service';
 
 interface PrayerTimesResponse {
   data: unknown;
@@ -130,6 +131,22 @@ export class ChatController {
   @Get('health')
   health(): { status: string; timestamp: string } {
     return { status: 'ok', timestamp: new Date().toISOString() };
+  }
+
+  @Get('admin/message-logs')
+  @UseGuards(SupabaseAdminGuard)
+  async getMessageLogs(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+    @Query('userId') userId?: string,
+    @Query('ipAddress') ipAddress?: string,
+  ): Promise<MessageLogListResult> {
+    return this.messageLogService.list({
+      page: Number.parseInt(page, 10) || 1,
+      limit: Number.parseInt(limit, 10) || 20,
+      userId: userId?.trim() || undefined,
+      ipAddress: ipAddress?.trim() || undefined,
+    });
   }
 
   @Get('prayer-times')

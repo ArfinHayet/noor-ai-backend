@@ -3,6 +3,21 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MessageLogEntity } from '../entities/message-log.entity';
 
+export interface MessageLogListParams {
+  page: number;
+  limit: number;
+  userId?: string;
+  ipAddress?: string;
+}
+
+export interface MessageLogListResult {
+  items: MessageLogEntity[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 @Injectable()
 export class MessageLogService {
   constructor(
@@ -40,6 +55,34 @@ export class MessageLogService {
         await this.delay(attempt * 100);
       }
     }
+  }
+
+  async list(params: MessageLogListParams): Promise<MessageLogListResult> {
+    const page = Math.max(1, params.page);
+    const limit = Math.min(Math.max(1, params.limit), 100);
+    const query = this.repo
+      .createQueryBuilder('log')
+      .orderBy('log.createdAt', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    if (params.userId) {
+      query.andWhere('log.userId ILIKE :userId', { userId: `%${params.userId}%` });
+    }
+
+    if (params.ipAddress) {
+      query.andWhere('log.ipAddress ILIKE :ipAddress', { ipAddress: `%${params.ipAddress}%` });
+    }
+
+    const [items, total] = await query.getManyAndCount();
+
+    return {
+      items,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
   private delay(ms: number): Promise<void> {
