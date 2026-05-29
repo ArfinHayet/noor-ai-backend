@@ -3,8 +3,9 @@ import { Request, Response } from 'express';
 import axios from 'axios';
 import { IpDailyLimitGuard } from '../common/guards/ip-daily-limit.guard';
 import { SupabaseAdminGuard } from '../common/guards/supabase-admin.guard';
+import { TurnstilePass, TurnstileService } from '../common/services/turnstile.service';
 import { ChatService, ChatResponse } from './chat.service';
-import { ChatDto } from './dto/chat.dto';
+import { ChatDto, TurnstilePassDto } from './dto/chat.dto';
 import { GeoService } from '../common/services/geo.service';
 import { MessageLogListResult, MessageLogService } from './services/message-log.service';
 
@@ -24,6 +25,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly geoService: GeoService,
     private readonly messageLogService: MessageLogService,
+    private readonly turnstileService: TurnstileService,
   ) {}
 
   private getCacheDateKey(): string {
@@ -71,9 +73,25 @@ export class ChatController {
     }
   }
 
+  private async verifyChatAccess(dto: ChatDto, ip: string): Promise<void> {
+    await this.turnstileService.verifyAccess({
+      captchaPass: dto.captchaPass,
+      captchaToken: dto.captchaToken,
+      ip,
+    });
+  }
+
+  @Post('turnstile-pass')
+  async createChatTurnstilePass(@Body() dto: TurnstilePassDto, @Req() req: Request): Promise<TurnstilePass> {
+    const ip = req.ip ?? '';
+    await this.turnstileService.verifyToken(dto.captchaToken, ip);
+    return this.turnstileService.createPass(ip);
+  }
+
   @Post()
   async chat(@Body() dto: ChatDto, @Req() req: Request): Promise<ChatResponse> {
     const ip = req.ip ?? '';
+    await this.verifyChatAccess(dto, ip);
     const location = await this.geoService.getLocationFromIp(ip, req.headers);
     const result = await this.chatService.chat(dto.userId, dto.message, location);
     await this.persistMessageLog({
@@ -90,6 +108,7 @@ export class ChatController {
   @UseGuards(IpDailyLimitGuard)
   async chatStream(@Body() dto: ChatDto, @Req() req: Request, @Res() res: Response): Promise<void> {
     const ip = req.ip ?? '';
+    await this.verifyChatAccess(dto, ip);
     const location = await this.geoService.getLocationFromIp(ip, req.headers);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');

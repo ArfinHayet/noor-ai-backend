@@ -31,4 +31,8 @@ export default () => ({
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
   },
+  turnstile: {
+    secretKey: process.env.TURNSTILE_SECRET_KEY ?? '',
+    passTtlMs: parseInt(process.env.TURNSTILE_PASS_TTL_MS || '86400000'),
+  },
 });

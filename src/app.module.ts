@@ -9,7 +9,9 @@ import { QuranVerseEntity } from './rag/entities/quran-verse.entity';
 import { HadithEntity } from './rag/entities/hadith.entity';
 import { GeminiKeyEntity } from './rag/entities/gemini-key.entity';
 import { MessageLogEntity } from './chat/entities/message-log.entity';
+import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
+import { CommonModule } from './common/common.module';
 import { GeminiModule } from './gemini/gemini.module';
 import { McpModule } from './mcp/mcp.module';
 import { RagModule } from './rag/rag.module';
@@ -39,6 +41,8 @@ import { RagModule } from './rag/rag.module';
         ],
       }),
     }),
+    CommonModule,
+    AuthModule,
     ChatModule,
     GeminiModule,
     McpModule,

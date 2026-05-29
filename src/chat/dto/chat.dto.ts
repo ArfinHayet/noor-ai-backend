@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, MinLength, MaxLength, IsOptional } from 'class-validator';
 
 export class ChatDto {
   @IsString()
@@ -10,4 +10,18 @@ export class ChatDto {
   @IsString()
   @IsNotEmpty()
   userId: string;
+
+  @IsString()
+  @IsOptional()
+  captchaToken?: string;
+
+  @IsString()
+  @IsOptional()
+  captchaPass?: string;
+}
+
+export class TurnstilePassDto {
+  @IsString()
+  @IsNotEmpty()
+  captchaToken: string;
 }
