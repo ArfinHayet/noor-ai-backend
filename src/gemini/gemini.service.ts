@@ -24,6 +24,15 @@ export interface GeminiTool {
   parameters: Record<string, unknown>;
 }
 
+export interface AgenticLoopResult {
+  text: string;
+  media?: unknown[];
+}
+
+export type AgenticStreamEvent =
+  | { type: 'chunk'; text: string }
+  | { type: 'media'; media: unknown };
+
 @Injectable()
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
@@ -93,7 +102,7 @@ export class GeminiService {
     systemPrompt: string,
     history: GeminiMessage[],
     tools: GeminiTool[],
-  ): Promise<string> {
+  ): Promise<AgenticLoopResult> {
     const totalKeys = (await this.geminiKeyService.getStats()).total || 1;
     let lastError: Error = new Error('No keys tried');
 
@@ -121,7 +130,7 @@ export class GeminiService {
     history: GeminiMessage[],
     tools: GeminiTool[],
     apiKey: string,
-  ): Promise<string> {
+  ): Promise<AgenticLoopResult> {
     const functionDeclarations = tools.map((t) => ({
       name: t.name,
       description: t.description,
@@ -158,13 +167,14 @@ export class GeminiService {
     const lastUserMessage = history[history.length - 1];
     const userText = lastUserMessage?.parts.find((p) => p.text)?.text ?? '';
     let result = await chatSession.sendMessage(userText);
+    const media: unknown[] = [];
 
     for (let i = 0; i < maxIterations; i++) {
       const parts = result.response.candidates?.[0]?.content?.parts ?? [];
       const functionCallPart = parts.find((p) => 'functionCall' in p && p.functionCall);
 
       if (!functionCallPart?.functionCall) {
-        return result.response.text();
+        return { text: result.response.text(), media: media.length ? media : undefined };
       }
 
       const { name, args } = functionCallPart.functionCall;
@@ -175,6 +185,8 @@ export class GeminiService {
         args as Record<string, string>,
       );
       this.logger.log(`Tool result [${name}]: ${JSON.stringify(toolResult)}`);
+      const toolMedia = this.extractToolMedia(toolResult);
+      if (toolMedia) media.push(toolMedia);
 
       result = await chatSession.sendMessage([
         {
@@ -186,14 +198,14 @@ export class GeminiService {
       ]);
     }
 
-    return result.response.text();
+    return { text: result.response.text(), media: media.length ? media : undefined };
   }
 
   async *runAgenticLoopStream(
     systemPrompt: string,
     history: GeminiMessage[],
     tools: GeminiTool[],
-  ): AsyncGenerator<string> {
+  ): AsyncGenerator<AgenticStreamEvent> {
     const totalKeys = (await this.geminiKeyService.getStats()).total || 1;
     let lastError: Error = new Error('No keys tried');
 
@@ -222,7 +234,7 @@ export class GeminiService {
     history: GeminiMessage[],
     tools: GeminiTool[],
     apiKey: string,
-  ): AsyncGenerator<string> {
+  ): AsyncGenerator<AgenticStreamEvent> {
     const functionDeclarations = tools.map((t) => ({
       name: t.name,
       description: t.description,
@@ -272,7 +284,7 @@ export class GeminiService {
           break;
         }
         const text = chunk.text();
-        if (text) yield text;
+        if (text) yield { type: 'chunk', text };
       }
 
       if (!isFunctionCallTurn) {
@@ -293,6 +305,8 @@ export class GeminiService {
         args as Record<string, string>,
       );
       this.logger.log(`Tool result [${name}]: ${JSON.stringify(toolResult)}`);
+      const toolMedia = this.extractToolMedia(toolResult);
+      if (toolMedia) yield { type: 'media', media: toolMedia };
 
       pendingMessage = [
         { functionResponse: { name, response: { result: JSON.stringify(toolResult) } } },
@@ -300,5 +314,18 @@ export class GeminiService {
     }
 
     throw new Error('Max tool iterations reached');
+  }
+
+  private extractToolMedia(toolResult: unknown): unknown | null {
+    if (
+      toolResult &&
+      typeof toolResult === 'object' &&
+      'media' in toolResult &&
+      (toolResult as { media?: unknown }).media
+    ) {
+      return (toolResult as { media: unknown }).media;
+    }
+
+    return null;
   }
 }

@@ -76,4 +76,21 @@ export const ISLAMIC_TOOLS = [
       },
     },
   },
+  {
+    name: 'get_quran_recitation',
+    description: 'Get an audio recitation for a requested Quran surah. Use this tool when the user asks in any language to recite, play, listen to, hear, or perform tilawah/qirat of a surah. Pass either the surah number or the surah name. If the user asks to recite the Quran but does not specify a surah, call this tool without arguments so it can ask for clarification.',
+    parameters: {
+      type: 'object',
+      properties: {
+        surahNumber: {
+          type: 'string',
+          description: 'Optional Quran surah number from 1 to 114, e.g. 1 for Al-Fatihah or 36 for Ya-Sin.',
+        },
+        surahName: {
+          type: 'string',
+          description: 'Optional surah name in any language or transliteration, e.g. Al-Fatihah, Ya-Sin, Ar-Rahman, Al-Mulk, ফাতিহা.',
+        },
+      },
+    },
+  },
 ];

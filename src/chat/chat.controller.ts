@@ -88,21 +88,21 @@ export class ChatController {
     return this.turnstileService.createPass(ip);
   }
 
-  @Post()
-  async chat(@Body() dto: ChatDto, @Req() req: Request): Promise<ChatResponse> {
-    const ip = req.ip ?? '';
-    await this.verifyChatAccess(dto, ip);
-    const location = await this.geoService.getLocationFromIp(ip, req.headers);
-    const result = await this.chatService.chat(dto.userId, dto.message, location);
-    await this.persistMessageLog({
-      userId: dto.userId,
-      ipAddress: ip,
-      message: dto.message,
-      response: result.reply,
-      source: result.source,
-    });
-    return result;
-  }
+  // @Post()
+  // async chat(@Body() dto: ChatDto, @Req() req: Request): Promise<ChatResponse> {
+  //   const ip = req.ip ?? '';
+  //   await this.verifyChatAccess(dto, ip);
+  //   const location = await this.geoService.getLocationFromIp(ip, req.headers);
+  //   const result = await this.chatService.chat(dto.userId, dto.message, location);
+  //   await this.persistMessageLog({
+  //     userId: dto.userId,
+  //     ipAddress: ip,
+  //     message: dto.message,
+  //     response: result.reply,
+  //     source: result.source,
+  //   });
+  //   return result;
+  // }
 
   @Post('stream')
   @UseGuards(IpDailyLimitGuard)
