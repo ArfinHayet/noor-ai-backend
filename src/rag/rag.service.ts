@@ -80,6 +80,7 @@ export interface HadithSearchResult {
 const SUPPORTED_LANG_COLUMNS = new Set(['ar', 'bn', 'en', 'es', 'fr', 'id', 'ru', 'tr', 'zh']);
 const QURAN_SEARCH_THRESHOLD = 0.4;
 const QURAN_SURAH_SEARCH_THRESHOLD = 0.5;
+const QURAN_SURAH_CANDIDATE_THRESHOLD = 0.2;
 const HADITH_SEARCH_THRESHOLD = 0.4;
 
 @Injectable()
@@ -425,6 +426,12 @@ export class RagService implements OnModuleInit {
   }
 
   async searchQuranSurah(queryEmbedding: number[], limit = 1): Promise<QuranSurahSearchResult[]> {
+    const rows = await this.searchQuranSurahCandidates(queryEmbedding, limit);
+
+    return rows.filter((r) => r.similarity >= QURAN_SURAH_SEARCH_THRESHOLD);
+  }
+
+  async searchQuranSurahCandidates(queryEmbedding: number[], limit = 8): Promise<QuranSurahSearchResult[]> {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
     const rows = await this.dataSource.query<
       Array<{ surah_number: string; name_en: string; name_bn: string; similarity: string }>
@@ -442,7 +449,7 @@ export class RagService implements OnModuleInit {
     );
 
     return rows
-      .filter((r) => parseFloat(r.similarity) >= QURAN_SURAH_SEARCH_THRESHOLD)
+      .filter((r) => parseFloat(r.similarity) >= QURAN_SURAH_CANDIDATE_THRESHOLD)
       .map((r) => ({
         surah_number: parseInt(r.surah_number, 10),
         name_en: r.name_en,

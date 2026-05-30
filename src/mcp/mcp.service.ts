@@ -2,7 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
-import { RagService, HadithSearchResult, QuranSurahRaw } from '../rag/rag.service';
+import {
+  RagService,
+  HadithSearchResult,
+  QuranSurahRaw,
+  QuranSurahSearchResult,
+} from '../rag/rag.service';
 import { GeminiKeyService } from '../rag/services/gemini-key.service';
 
 interface PrayerTimesResponse {
@@ -98,6 +103,11 @@ interface QuranRecitationResult {
   media?: QuranRecitationMedia;
 }
 
+interface QuranSurahRerankResult {
+  surahNumber: number | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
 type ToolResult =
   | QuranResult[]
   | HadithResult[]
@@ -133,6 +143,19 @@ export class McpService {
     return msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('quota');
   }
 
+  private async getGeminiApiKey(): Promise<{ id: string | null; apiKey: string }> {
+    try {
+      const row = await this.geminiKeyService.getNextKey();
+      if (row) return row;
+    } catch (error) {
+      this.logger.warn(`Unable to read DB Gemini key, using fallback key if available: ${(error as Error).message}`);
+    }
+
+    const apiKey = this.configService.get<string>('gemini.apiKey');
+    if (!apiKey) throw new Error('No Gemini API keys available');
+    return { id: null, apiKey };
+  }
+
   /**
    * Embed text with automatic key rotation on 429 errors.
    * Tries each available key once before giving up.
@@ -143,16 +166,7 @@ export class McpService {
     let lastError: Error = new Error('No keys tried');
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      let row;
-      try {
-        row = await this.geminiKeyService.getNextKey();
-      } catch (error) {
-        this.logger.warn(`Unable to read DB Gemini key, using fallback key if available: ${(error as Error).message}`);
-        row = null;
-      }
-
-      const apiKey = row?.apiKey ?? this.configService.get<string>('gemini.apiKey');
-      if (!apiKey) throw new Error('No Gemini API keys available');
+      const { id, apiKey } = await this.getGeminiApiKey();
 
       try {
         const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
@@ -166,9 +180,9 @@ export class McpService {
         return result.embedding.values;
       } catch (err) {
         lastError = err as Error;
-        if (this.isRateLimitError(err) && row?.id) {
-          this.logger.warn(`MCP embed key ${row.id.slice(0, 8)}… rate-limited, rotating...`);
-          await this.geminiKeyService.markRateLimited(row.id);
+        if (this.isRateLimitError(err) && id) {
+          this.logger.warn(`MCP embed key ${id.slice(0, 8)}… rate-limited, rotating...`);
+          await this.geminiKeyService.markRateLimited(id);
         } else {
           break;
         }
@@ -227,6 +241,78 @@ export class McpService {
     };
   }
 
+  private parseQuranSurahRerankResponse(text: string): QuranSurahRerankResult | null {
+    const jsonText = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+
+    try {
+      const parsed = JSON.parse(jsonText) as Partial<QuranSurahRerankResult>;
+      const confidence = parsed.confidence;
+      const surahNumber =
+        typeof parsed.surahNumber === 'number' && Number.isInteger(parsed.surahNumber)
+          ? parsed.surahNumber
+          : null;
+
+      if (confidence !== 'high' && confidence !== 'medium' && confidence !== 'low') return null;
+
+      return { surahNumber, confidence };
+    } catch {
+      return null;
+    }
+  }
+
+  private async rerankQuranSurahCandidates(
+    rawName: string,
+    candidates: QuranSurahSearchResult[],
+  ): Promise<QuranSurahRaw | null> {
+    if (candidates.length === 0) return null;
+
+    const candidateLines = candidates
+      .map(
+        (candidate) =>
+          `- surahNumber=${candidate.surah_number}, name_en="${candidate.name_en}", name_bn="${candidate.name_bn}", similarity=${candidate.similarity.toFixed(4)}`,
+      )
+      .join('\n');
+
+    const prompt =
+      `You resolve Quran recitation requests to one of the provided candidate surahs only.\n` +
+      `User request: ${JSON.stringify(rawName)}\n\n` +
+      `Candidates:\n${candidateLines}\n\n` +
+      `Rules:\n` +
+      `- Use only the candidate list. Do not choose a surah number that is not in the candidates.\n` +
+      `- The user may include command words such as recite/play/listen or Bangla equivalents; infer the intended surah name from the request.\n` +
+      `- If the intended surah is clear, return high confidence.\n` +
+      `- If the intended surah is ambiguous or absent, return null with low confidence.\n` +
+      `- Return only strict JSON in this exact shape: {"surahNumber":114,"confidence":"high"} or {"surahNumber":null,"confidence":"low"}`;
+
+    const modelName = this.configService.get<string>('gemini.chatModel') ?? 'gemini-2.5-flash';
+    const maxAttempts = (await this.geminiKeyService.getStats()).total || 1;
+    let lastError: Error = new Error('No keys tried');
+
+    for (let attempt = 0; attempt < maxAttempts + 1; attempt++) {
+      const { id, apiKey } = await this.getGeminiApiKey();
+
+      try {
+        const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: modelName });
+        const response = await model.generateContent(prompt);
+        const parsed = this.parseQuranSurahRerankResponse(response.response.text());
+
+        if (!parsed || parsed.confidence === 'low' || parsed.surahNumber === null) return null;
+
+        return candidates.find((candidate) => candidate.surah_number === parsed.surahNumber) ?? null;
+      } catch (error) {
+        lastError = error as Error;
+        if (this.isRateLimitError(error) && id) {
+          this.logger.warn(`MCP rerank key ${id.slice(0, 8)}… rate-limited, rotating...`);
+          await this.geminiKeyService.markRateLimited(id);
+        } else {
+          break;
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
   private async getQuranRecitation(input: Record<string, string>): Promise<QuranRecitationResult | ErrorResult> {
     try {
       const rawNumber = input.surahNumber?.trim();
@@ -252,8 +338,8 @@ export class McpService {
       }
 
       const embedding = await this.embedWithRotation(rawName);
-      const matches = await this.ragService.searchQuranSurah(embedding, 1);
-      const surah = matches[0];
+      const candidates = await this.ragService.searchQuranSurahCandidates(embedding, 8);
+      const surah = await this.rerankQuranSurahCandidates(rawName, candidates);
 
       if (!surah) {
         return this.getQuranRecitationNotFoundReply();
