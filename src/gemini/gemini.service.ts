@@ -51,8 +51,13 @@ export class GeminiService {
 
   /** Fetch next available key from DB; fall back to .env */
   private async nextKey(): Promise<{ id: string | null; apiKey: string }> {
-    const row = await this.geminiKeyService.getNextKey();
-    if (row) return row;
+    try {
+      const row = await this.geminiKeyService.getNextKey();
+      if (row) return row;
+    } catch (error) {
+      this.logger.warn(`Unable to read DB Gemini key — falling back to .env GEMINI_API_KEY: ${(error as Error).message}`);
+    }
+
     const envKey = this.configService.get<string>('gemini.apiKey');
     if (envKey) {
       this.logger.warn('All DB keys exhausted — falling back to .env GEMINI_API_KEY');

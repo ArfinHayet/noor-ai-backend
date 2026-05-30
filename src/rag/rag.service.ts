@@ -192,6 +192,15 @@ export class RagService implements OnModuleInit {
     this.logger.log('Quran surahs table ensured');
   }
 
+  private normalizeQuranSurahName(value: string): string {
+    return value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\u0980-\u09ff]+/g, '')
+      .trim();
+  }
+
   async searchSimilar(queryEmbedding: number[]): Promise<CachedResult | null> {
     const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
@@ -355,6 +364,63 @@ export class RagService implements OnModuleInit {
       surah_number: parseInt(rows[0].surah_number, 10),
       name_en: rows[0].name_en,
       name_bn: rows[0].name_bn,
+    };
+  }
+
+  async findQuranSurahByName(rawName: string): Promise<QuranSurahRaw | null> {
+    const queryName = this.normalizeQuranSurahName(rawName);
+    if (!queryName) return null;
+
+    const rows = await this.dataSource.query<
+      Array<{ surah_number: string; name_en: string; name_bn: string }>
+    >(
+      `SELECT surah_number, name_en, name_bn
+       FROM quran_surahs
+       WHERE embedding IS NOT NULL`,
+    );
+
+    const normalizedRows = rows.map((row) => ({
+      row,
+      normalizedEnglishName: this.normalizeQuranSurahName(row.name_en),
+      normalizedBanglaName: this.normalizeQuranSurahName(row.name_bn),
+    }));
+
+    const exactMatch = normalizedRows.find(
+      ({ normalizedEnglishName, normalizedBanglaName }) =>
+        queryName === normalizedEnglishName || queryName === normalizedBanglaName,
+    );
+
+    if (exactMatch) {
+      return {
+        surah_number: parseInt(exactMatch.row.surah_number, 10),
+        name_en: exactMatch.row.name_en,
+        name_bn: exactMatch.row.name_bn,
+      };
+    }
+
+    if (queryName.length < 5) return null;
+
+    const containedMatches = normalizedRows
+      .filter(
+        ({ normalizedEnglishName, normalizedBanglaName }) =>
+          queryName.includes(normalizedEnglishName) ||
+          queryName.includes(normalizedBanglaName) ||
+          normalizedEnglishName.includes(queryName) ||
+          normalizedBanglaName.includes(queryName),
+      )
+      .sort((a, b) => {
+        const aLength = Math.max(a.normalizedEnglishName.length, a.normalizedBanglaName.length);
+        const bLength = Math.max(b.normalizedEnglishName.length, b.normalizedBanglaName.length);
+        return bLength - aLength;
+      });
+
+    const match = containedMatches[0];
+    if (!match) return null;
+
+    return {
+      surah_number: parseInt(match.row.surah_number, 10),
+      name_en: match.row.name_en,
+      name_bn: match.row.name_bn,
     };
   }
 

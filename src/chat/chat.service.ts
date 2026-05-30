@@ -261,8 +261,8 @@ export class ChatService {
       [...userHistory],
       ISLAMIC_TOOLS,
     );
-    const reply = agentResult.text;
     const media = agentResult.media?.find(isQuranRecitationMedia);
+    const reply = agentResult.text.trim() || (media ? getMediaFallbackReply(media) : agentResult.text);
 
     // 5. Check for refusal
     const isRefusal = reply.startsWith("I'm only able to answer Islamic questions");

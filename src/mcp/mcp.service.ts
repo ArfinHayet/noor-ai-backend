@@ -143,7 +143,14 @@ export class McpService {
     let lastError: Error = new Error('No keys tried');
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const row = await this.geminiKeyService.getNextKey();
+      let row;
+      try {
+        row = await this.geminiKeyService.getNextKey();
+      } catch (error) {
+        this.logger.warn(`Unable to read DB Gemini key, using fallback key if available: ${(error as Error).message}`);
+        row = null;
+      }
+
       const apiKey = row?.apiKey ?? this.configService.get<string>('gemini.apiKey');
       if (!apiKey) throw new Error('No Gemini API keys available');
 
@@ -237,6 +244,11 @@ export class McpService {
       const rawName = input.surahName?.trim();
       if (!rawName) {
         return this.getQuranRecitationClarificationReply();
+      }
+
+      const nameMatch = await this.ragService.findQuranSurahByName(rawName);
+      if (nameMatch) {
+        return this.buildQuranRecitationResult(nameMatch);
       }
 
       const embedding = await this.embedWithRotation(rawName);
