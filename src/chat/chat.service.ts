@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { GeminiService, GeminiMessage } from '../gemini/gemini.service';
 import { RagService } from '../rag/rag.service';
 import { ISLAMIC_TOOLS } from '../mcp/tools/islamic.tools';
+import { McpService } from '../mcp/mcp.service';
 import { GeoLocation } from '../common/services/geo.service';
 
 const BASE_SYSTEM_PROMPT = `You are an Islamic scholar assistant. You ONLY answer questions related to Islam, including:
@@ -121,6 +122,14 @@ function getMediaFallbackReply(media: QuranRecitationMedia): string {
   return `Here is Surah ${media.surahName} recited by ${media.reciterName}.`;
 }
 
+function isQuranRecitationToolResult(value: unknown): value is { reply: string; media?: QuranRecitationMedia } {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    typeof (value as { reply?: unknown }).reply === 'string'
+  );
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -129,6 +138,7 @@ export class ChatService {
   constructor(
     private readonly geminiService: GeminiService,
     private readonly ragService: RagService,
+    private readonly mcpService: McpService,
   ) {}
 
   private normalizeQuery(query: string): string {
@@ -226,11 +236,33 @@ export class ChatService {
     );
   }
 
+  private async getDirectQuranRecitation(message: string): Promise<ChatResponse> {
+    const result = await this.mcpService.executeTool('get_quran_recitation', {
+      surahName: message,
+    });
+
+    if (isQuranRecitationToolResult(result)) {
+      const media = isQuranRecitationMedia(result.media) ? result.media : undefined;
+      const reply = result.reply.trim() || (media ? getMediaFallbackReply(media) : result.reply);
+      return { reply, source: 'model', similarity: null, media };
+    }
+
+    const error = result && typeof result === 'object' && 'error' in result
+      ? String((result as { error: unknown }).error)
+      : 'Failed to get Quran recitation.';
+
+    return { reply: error, source: 'model', similarity: null };
+  }
+
   async chat(userId: string, message: string, location?: GeoLocation | null): Promise<ChatResponse> {
     // 1. Generate embedding for incoming message (normalized for consistent cache keys)
     const normalizedMessage = this.normalizeQuery(message);
     const skipCache = this.shouldSkipCache(message);
     const embedding = skipCache ? [] : await this.geminiService.generateEmbedding(normalizedMessage);
+
+    if (this.isQuranRecitationQuery(message)) {
+      return this.getDirectQuranRecitation(message);
+    }
 
     // 2. Search RAG cache (skip for real-time queries like prayer times)
     if (!skipCache) {
@@ -289,6 +321,14 @@ export class ChatService {
     const normalizedMessage = this.normalizeQuery(message);
     const skipCache = this.shouldSkipCache(message);
     const embedding = skipCache ? [] : await this.geminiService.generateEmbedding(normalizedMessage);
+
+    if (this.isQuranRecitationQuery(message)) {
+      const result = await this.getDirectQuranRecitation(message);
+      if (result.media) yield { type: 'media', media: result.media };
+      yield { type: 'chunk', text: result.reply };
+      yield { type: 'done', source: result.source, similarity: result.similarity, media: result.media };
+      return;
+    }
 
     // Cache hit — yield full answer as one chunk (skip for real-time queries)
     if (!skipCache) {
