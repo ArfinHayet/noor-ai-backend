@@ -27,7 +27,7 @@ For ANY Islamic teaching, ruling, worship, history, Quran, or Hadith question �
 
 For real-time utility questions like prayer times, current Hijri date, Islamic calendar dates, Gregorian/Hijri conversion, Ramadan/Eid dates, or "when will Eid be?", call the specialized time/calendar tool first. Quran and Hadith searches are not required for these utility lookups unless the user also asks for evidence, rulings, virtues, or explanation.
 
-For Quran recitation requests in ANY language, such as "recite Surah Yasin", "play Al-Fatihah", "সূরা রহমান তেলাওয়াত শুনাও", or "listen to Quran chapter 67", call "get_quran_recitation". Do not use Quran/Hadith search for pure audio playback requests unless the user also asks for explanation, translation, virtues, ruling, or evidence. If the user asks for recitation but does not specify a surah, call "get_quran_recitation" without arguments and use its clarification response.
+For Quran recitation requests in ANY language, such as "recite Surah Yasin", "play Al-Fatihah", "সূরা রহমান তেলাওয়াত শুনাও", or "listen to Quran chapter 67", call "get_quran_recitation". Do not use Quran/Hadith search for pure audio playback requests unless the user also asks for explanation, translation, virtues, ruling, or evidence. Pass the user's surah phrase as "surahName" exactly as written unless the user gave a clear numeric surah/chapter number, in which case pass "surahNumber". If the user asks for recitation but does not specify a surah, call "get_quran_recitation" without arguments and use its clarification response.
 
 1. QURAN VERSES:
    - NEVER quote or reference a Quran verse from memory
@@ -62,7 +62,9 @@ For Quran recitation requests in ANY language, such as "recite Surah Yasin", "pl
 
 5. QURAN RECITATION:
    - ALWAYS call "get_quran_recitation" when the user asks to recite, play, listen to, hear, or perform tilawah/qirat of a surah
-   - Extract the surah name or number from the user's message in any language and pass it as "surahName" or "surahNumber"
+   - Do not correct or normalize surah names yourself; the tool uses semantic retrieval over stored surah metadata
+   - Pass the user's requested surah phrase as "surahName" exactly as written, or pass "surahNumber" only when the user gave an explicit surah/chapter number
+   - If the tool cannot find a surah, ask the user to clarify the surah name or number
    - If the tool returns media, briefly introduce the recitation in the user's language and do not invent another audio source
 
 ANSWER QUALITY RULES:
@@ -201,8 +203,27 @@ export class ChatService {
     return false;
   }
 
+  /**
+   * Quran recitation responses can contain media, so they must never be served
+   * from the text-only semantic answer cache.
+   */
+  private isQuranRecitationQuery(message: string): boolean {
+    const lower = message.toLowerCase();
+
+    if (/\b(recite|play|listen|hear|tilawah|tilaawah|qirat|qiraat|quran audio|surah audio)\b/.test(lower)) return true;
+    if (/(সূরা|সুরা|কুরআন|কোরআন).*(তেলাওয়াত|শুনাও|শুনতে|প্লে|চালাও)/.test(message)) return true;
+    if (/(তেলাওয়াত|শুনাও|শুনতে|প্লে|চালাও).*(সূরা|সুরা|কুরআন|কোরআন)/.test(message)) return true;
+    if (/(تلاوة|تشغيل|استمع|اسمع|سورة|قرآن)/.test(message) && /(تلاوة|تشغيل|استمع|اسمع)/.test(message)) return true;
+
+    return false;
+  }
+
   private shouldSkipCache(message: string): boolean {
-    return this.isPrayerTimeQuery(message) || this.isHijriCalendarQuery(message);
+    return (
+      this.isPrayerTimeQuery(message) ||
+      this.isHijriCalendarQuery(message) ||
+      this.isQuranRecitationQuery(message)
+    );
   }
 
   async chat(userId: string, message: string, location?: GeoLocation | null): Promise<ChatResponse> {

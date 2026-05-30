@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import axios from 'axios';
-import { RagService, HadithSearchResult } from '../rag/rag.service';
+import { RagService, HadithSearchResult, QuranSurahRaw } from '../rag/rag.service';
 import { GeminiKeyService } from '../rag/services/gemini-key.service';
 
 interface PrayerTimesResponse {
@@ -107,139 +107,12 @@ type ToolResult =
   | NotFoundResult
   | ErrorResult;
 
-interface SurahMeta {
-  number: number;
-  name: string;
-  aliases: string[];
-}
-
 const QURAN_AUDIO_RECITER = {
   edition: 'ar.alafasy',
   name: 'Mishary Rashid Alafasy',
   source: 'AlQuran.cloud CDN',
   bitrate: 128,
 };
-
-const SURAH_LIST: SurahMeta[] = [
-  { number: 1, name: 'Al-Fatihah', aliases: ['fatihah', 'fatiha', 'ফাতিহা'] },
-  { number: 2, name: 'Al-Baqarah', aliases: ['baqarah', 'bakara', 'বাকারা'] },
-  { number: 3, name: 'Ali Imran', aliases: ['aal imran', 'imran', 'ইমরান'] },
-  { number: 4, name: 'An-Nisa', aliases: ['nisa', 'নিসা'] },
-  { number: 5, name: 'Al-Maidah', aliases: ['maidah', 'maida', 'মায়িদা'] },
-  { number: 6, name: 'Al-Anam', aliases: ['anam', 'anaam', 'আনআম'] },
-  { number: 7, name: 'Al-Araf', aliases: ['araf', 'আরাফ'] },
-  { number: 8, name: 'Al-Anfal', aliases: ['anfal', 'আনফাল'] },
-  { number: 9, name: 'At-Tawbah', aliases: ['tawbah', 'taubah', 'তাওবা'] },
-  { number: 10, name: 'Yunus', aliases: ['younus', 'ইউনুস'] },
-  { number: 11, name: 'Hud', aliases: ['হুদ'] },
-  { number: 12, name: 'Yusuf', aliases: ['yousuf', 'ইউসুফ'] },
-  { number: 13, name: 'Ar-Rad', aliases: ['rad', 'raad', 'রাদ'] },
-  { number: 14, name: 'Ibrahim', aliases: ['ইব্রাহিম'] },
-  { number: 15, name: 'Al-Hijr', aliases: ['hijr', 'হিজর'] },
-  { number: 16, name: 'An-Nahl', aliases: ['nahl', 'নাহল'] },
-  { number: 17, name: 'Al-Isra', aliases: ['isra', 'bani israel', 'ইসরা', 'বনী ইসরাইল'] },
-  { number: 18, name: 'Al-Kahf', aliases: ['kahf', 'কাহফ'] },
-  { number: 19, name: 'Maryam', aliases: ['মারইয়াম', 'মারিয়াম'] },
-  { number: 20, name: 'Ta-Ha', aliases: ['taha', 'ত্বহা'] },
-  { number: 21, name: 'Al-Anbiya', aliases: ['anbiya', 'আম্বিয়া', 'আনবিয়া'] },
-  { number: 22, name: 'Al-Hajj', aliases: ['hajj', 'হজ', 'হজ্জ'] },
-  { number: 23, name: 'Al-Muminun', aliases: ['muminun', 'muminoon', 'মুমিনুন'] },
-  { number: 24, name: 'An-Nur', aliases: ['nur', 'noor', 'নূর'] },
-  { number: 25, name: 'Al-Furqan', aliases: ['furqan', 'ফুরকান'] },
-  { number: 26, name: 'Ash-Shuara', aliases: ['shuara', 'শুআরা'] },
-  { number: 27, name: 'An-Naml', aliases: ['naml', 'নামল'] },
-  { number: 28, name: 'Al-Qasas', aliases: ['qasas', 'কাসাস'] },
-  { number: 29, name: 'Al-Ankabut', aliases: ['ankabut', 'আনকাবুত'] },
-  { number: 30, name: 'Ar-Rum', aliases: ['rum', 'room', 'রুম'] },
-  { number: 31, name: 'Luqman', aliases: ['lokman', 'লুকমান'] },
-  { number: 32, name: 'As-Sajdah', aliases: ['sajdah', 'sajda', 'সাজদাহ', 'সিজদাহ'] },
-  { number: 33, name: 'Al-Ahzab', aliases: ['ahzab', 'আহযাব'] },
-  { number: 34, name: 'Saba', aliases: ['সাবা'] },
-  { number: 35, name: 'Fatir', aliases: ['ফাতির'] },
-  { number: 36, name: 'Ya-Sin', aliases: ['yasin', 'yaasin', 'ইয়াসিন', 'ইয়াসিন'] },
-  { number: 37, name: 'As-Saffat', aliases: ['saffat', 'সাফফাত'] },
-  { number: 38, name: 'Sad', aliases: ['saad', 'সাদ'] },
-  { number: 39, name: 'Az-Zumar', aliases: ['zumar', 'যুমার'] },
-  { number: 40, name: 'Ghafir', aliases: ['mumin', 'গাফির', 'মুমিন'] },
-  { number: 41, name: 'Fussilat', aliases: ['ফুসসিলাত'] },
-  { number: 42, name: 'Ash-Shuraa', aliases: ['shura', 'shuraa', 'শুরা'] },
-  { number: 43, name: 'Az-Zukhruf', aliases: ['zukhruf', 'যুখরুফ'] },
-  { number: 44, name: 'Ad-Dukhan', aliases: ['dukhan', 'দুখান'] },
-  { number: 45, name: 'Al-Jathiyah', aliases: ['jathiyah', 'jasiyah', 'জাসিয়া'] },
-  { number: 46, name: 'Al-Ahqaf', aliases: ['ahqaf', 'আহকাফ'] },
-  { number: 47, name: 'Muhammad', aliases: ['মুহাম্মদ'] },
-  { number: 48, name: 'Al-Fath', aliases: ['fath', 'ফাতহ'] },
-  { number: 49, name: 'Al-Hujurat', aliases: ['hujurat', 'হুজুরাত'] },
-  { number: 50, name: 'Qaf', aliases: ['কাফ'] },
-  { number: 51, name: 'Adh-Dhariyat', aliases: ['dhariyat', 'zariyat', 'যারিয়াত'] },
-  { number: 52, name: 'At-Tur', aliases: ['tur', 'তুর'] },
-  { number: 53, name: 'An-Najm', aliases: ['najm', 'নাজম'] },
-  { number: 54, name: 'Al-Qamar', aliases: ['qamar', 'কামার'] },
-  { number: 55, name: 'Ar-Rahman', aliases: ['rahman', 'রহমান'] },
-  { number: 56, name: 'Al-Waqiah', aliases: ['waqiah', 'waqia', 'ওয়াকিয়া', 'ওয়াকিয়া'] },
-  { number: 57, name: 'Al-Hadid', aliases: ['hadid', 'হাদিদ'] },
-  { number: 58, name: 'Al-Mujadilah', aliases: ['mujadilah', 'মুজাদালাহ'] },
-  { number: 59, name: 'Al-Hashr', aliases: ['hashr', 'হাশর'] },
-  { number: 60, name: 'Al-Mumtahanah', aliases: ['mumtahanah', 'মুমতাহিনা'] },
-  { number: 61, name: 'As-Saff', aliases: ['saff', 'সফ'] },
-  { number: 62, name: 'Al-Jumuah', aliases: ['jumuah', 'jummah', 'জুমআ', 'জুমা'] },
-  { number: 63, name: 'Al-Munafiqun', aliases: ['munafiqun', 'মুনাফিকুন'] },
-  { number: 64, name: 'At-Taghabun', aliases: ['taghabun', 'তাগাবুন'] },
-  { number: 65, name: 'At-Talaq', aliases: ['talaq', 'তালাক'] },
-  { number: 66, name: 'At-Tahrim', aliases: ['tahrim', 'তাহরিম'] },
-  { number: 67, name: 'Al-Mulk', aliases: ['mulk', 'মূলক', 'মুলক'] },
-  { number: 68, name: 'Al-Qalam', aliases: ['qalam', 'কলম'] },
-  { number: 69, name: 'Al-Haqqah', aliases: ['haqqah', 'হাক্কাহ'] },
-  { number: 70, name: 'Al-Maarij', aliases: ['maarij', 'মাআরিজ'] },
-  { number: 71, name: 'Nuh', aliases: ['nooh', 'নুহ'] },
-  { number: 72, name: 'Al-Jinn', aliases: ['jinn', 'জিন'] },
-  { number: 73, name: 'Al-Muzzammil', aliases: ['muzzammil', 'মুযযাম্মিল'] },
-  { number: 74, name: 'Al-Muddaththir', aliases: ['muddaththir', 'muddassir', 'মুদ্দাসসির'] },
-  { number: 75, name: 'Al-Qiyamah', aliases: ['qiyamah', 'qiyama', 'কিয়ামাহ', 'কিয়ামত'] },
-  { number: 76, name: 'Al-Insan', aliases: ['insan', 'dahr', 'ইনসান', 'দাহর'] },
-  { number: 77, name: 'Al-Mursalat', aliases: ['mursalat', 'মুরসালাত'] },
-  { number: 78, name: 'An-Naba', aliases: ['naba', 'নাবা'] },
-  { number: 79, name: 'An-Naziat', aliases: ['naziyat', 'নাযিয়াত'] },
-  { number: 80, name: 'Abasa', aliases: ['আবাসা'] },
-  { number: 81, name: 'At-Takwir', aliases: ['takwir', 'তাকভীর'] },
-  { number: 82, name: 'Al-Infitar', aliases: ['infitar', 'ইনফিতার'] },
-  { number: 83, name: 'Al-Mutaffifin', aliases: ['mutaffifin', 'মুতাফফিফিন'] },
-  { number: 84, name: 'Al-Inshiqaq', aliases: ['inshiqaq', 'ইনশিকাক'] },
-  { number: 85, name: 'Al-Buruj', aliases: ['buruj', 'বুরুজ'] },
-  { number: 86, name: 'At-Tariq', aliases: ['tariq', 'তারিক'] },
-  { number: 87, name: 'Al-Ala', aliases: ['ala', 'আলা'] },
-  { number: 88, name: 'Al-Ghashiyah', aliases: ['ghashiyah', 'গাশিয়াহ'] },
-  { number: 89, name: 'Al-Fajr', aliases: ['fajr', 'ফজর'] },
-  { number: 90, name: 'Al-Balad', aliases: ['balad', 'বালাদ'] },
-  { number: 91, name: 'Ash-Shams', aliases: ['shams', 'শামস'] },
-  { number: 92, name: 'Al-Layl', aliases: ['layl', 'lail', 'লাইল'] },
-  { number: 93, name: 'Ad-Duhaa', aliases: ['duha', 'duhaa', 'দুহা'] },
-  { number: 94, name: 'Ash-Sharh', aliases: ['sharh', 'inshirah', 'ইনশিরাহ', 'শারহ'] },
-  { number: 95, name: 'At-Tin', aliases: ['tin', 'তীন'] },
-  { number: 96, name: 'Al-Alaq', aliases: ['alaq', 'আলাক'] },
-  { number: 97, name: 'Al-Qadr', aliases: ['qadr', 'কদর'] },
-  { number: 98, name: 'Al-Bayyinah', aliases: ['bayyinah', 'বাইয়্যিনাহ'] },
-  { number: 99, name: 'Az-Zalzalah', aliases: ['zalzalah', 'zilzal', 'যিলযাল'] },
-  { number: 100, name: 'Al-Adiyat', aliases: ['adiyat', 'আদিয়াত'] },
-  { number: 101, name: 'Al-Qariah', aliases: ['qariah', 'কারিয়াহ'] },
-  { number: 102, name: 'At-Takathur', aliases: ['takathur', 'তাকাসুর'] },
-  { number: 103, name: 'Al-Asr', aliases: ['asr', 'আসর'] },
-  { number: 104, name: 'Al-Humazah', aliases: ['humazah', 'হুমাযাহ'] },
-  { number: 105, name: 'Al-Fil', aliases: ['fil', 'ফীল'] },
-  { number: 106, name: 'Quraysh', aliases: ['quraish', 'কুরাইশ'] },
-  { number: 107, name: 'Al-Maun', aliases: ['maun', 'মাউন'] },
-  { number: 108, name: 'Al-Kawthar', aliases: ['kawthar', 'kausar', 'কাউসার'] },
-  { number: 109, name: 'Al-Kafirun', aliases: ['kafirun', 'কাফিরুন'] },
-  { number: 110, name: 'An-Nasr', aliases: ['nasr', 'নাসর'] },
-  { number: 111, name: 'Al-Masad', aliases: ['masad', 'lahab', 'লাহাব', 'মাসাদ'] },
-  { number: 112, name: 'Al-Ikhlas', aliases: ['ikhlas', 'ইখলাস'] },
-  { number: 113, name: 'Al-Falaq', aliases: ['falaq', 'ফালাক'] },
-  { number: 114, name: 'An-Nas', aliases: ['nas', 'নাস'] },
-];
-
-const SURAH_ALIASES = SURAH_LIST.flatMap((surah) =>
-  [surah.name, ...surah.aliases].map((alias) => ({ alias, surah })),
-).sort((a, b) => b.alias.length - a.alias.length);
 
 @Injectable()
 export class McpService {
@@ -315,69 +188,72 @@ export class McpService {
     }
   }
 
-  private normalizeSurahText(value: string): string {
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/['’`]/g, '')
-      .replace(/[^a-z0-9\u0980-\u09ff\u0600-\u06ff]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private resolveSurah(input: Record<string, string>): SurahMeta | null {
-    const numberValue = Number(input.surahNumber);
-
-    if (Number.isInteger(numberValue)) {
-      const surah = SURAH_LIST.find((item) => item.number === numberValue);
-      if (surah) return surah;
-    }
-
-    const rawName = input.surahName?.trim();
-    if (!rawName) return null;
-
-    const normalizedName = this.normalizeSurahText(rawName);
-    const directNumber = Number(normalizedName);
-
-    if (Number.isInteger(directNumber)) {
-      const surah = SURAH_LIST.find((item) => item.number === directNumber);
-      if (surah) return surah;
-    }
-
-    const aliasMatch = SURAH_ALIASES.find(({ alias }) => {
-      const normalizedAlias = this.normalizeSurahText(alias);
-      return normalizedName === normalizedAlias || normalizedName.includes(normalizedAlias);
-    });
-
-    return aliasMatch?.surah ?? null;
-  }
-
   private buildQuranAudioUrl(surahNumber: number): string {
     return `https://cdn.islamic.network/quran/audio-surah/${QURAN_AUDIO_RECITER.bitrate}/${QURAN_AUDIO_RECITER.edition}/${surahNumber}.mp3`;
   }
 
-  private getQuranRecitation(input: Record<string, string>): QuranRecitationResult {
-    const surah = this.resolveSurah(input);
-
-    if (!surah) {
-      return {
-        reply:
-          'Which surah would you like me to recite? For example: Al-Fatihah, Ya-Sin, Ar-Rahman, or Al-Mulk.',
-      };
-    }
-
+  private buildQuranRecitationResult(surah: QuranSurahRaw): QuranRecitationResult {
     return {
-      reply: `Here is Surah ${surah.name} recited by ${QURAN_AUDIO_RECITER.name}.`,
+      reply: `Here is Surah ${surah.name_en} recited by ${QURAN_AUDIO_RECITER.name}.`,
       media: {
         type: 'quran_recitation',
-        surahNumber: surah.number,
-        surahName: surah.name,
+        surahNumber: surah.surah_number,
+        surahName: surah.name_en,
         reciterName: QURAN_AUDIO_RECITER.name,
-        audioUrl: this.buildQuranAudioUrl(surah.number),
+        audioUrl: this.buildQuranAudioUrl(surah.surah_number),
         source: QURAN_AUDIO_RECITER.source,
       },
     };
+  }
+
+  private getQuranRecitationClarificationReply(): QuranRecitationResult {
+    return {
+      reply:
+        'Which surah would you like me to recite? For example: Al-Fatihah, Ya-Sin, Ar-Rahman, or Al-Mulk.',
+    };
+  }
+
+  private getQuranRecitationNotFoundReply(): QuranRecitationResult {
+    return {
+      reply:
+        'I could not find that surah. Please clarify the surah name or provide the surah number.',
+    };
+  }
+
+  private async getQuranRecitation(input: Record<string, string>): Promise<QuranRecitationResult | ErrorResult> {
+    try {
+      const rawNumber = input.surahNumber?.trim();
+      const numberValue = Number(rawNumber);
+
+      if (rawNumber && Number.isInteger(numberValue) && numberValue >= 1 && numberValue <= 114) {
+        const surah = await this.ragService.getQuranSurahByNumber(numberValue);
+        return surah ? this.buildQuranRecitationResult(surah) : this.getQuranRecitationNotFoundReply();
+      }
+
+      if (rawNumber) {
+        return this.getQuranRecitationNotFoundReply();
+      }
+
+      const rawName = input.surahName?.trim();
+      if (!rawName) {
+        return this.getQuranRecitationClarificationReply();
+      }
+
+      const embedding = await this.embedWithRotation(rawName);
+      const matches = await this.ragService.searchQuranSurah(embedding, 1);
+      const surah = matches[0];
+
+      if (!surah) {
+        return this.getQuranRecitationNotFoundReply();
+      }
+
+      return this.buildQuranRecitationResult(surah);
+    } catch (error) {
+      this.logger.warn(`Quran recitation lookup failed: ${(error as Error).message}`);
+      return {
+        error: `Failed to get Quran recitation: ${(error as Error).message}`,
+      };
+    }
   }
 
   private async searchQuranByTopic(

@@ -78,7 +78,7 @@ export const ISLAMIC_TOOLS = [
   },
   {
     name: 'get_quran_recitation',
-    description: 'Get an audio recitation for a requested Quran surah. Use this tool when the user asks in any language to recite, play, listen to, hear, or perform tilawah/qirat of a surah. Pass either the surah number or the surah name. If the user asks to recite the Quran but does not specify a surah, call this tool without arguments so it can ask for clarification.',
+    description: 'Get an audio recitation for a requested Quran surah using semantic retrieval over stored surah metadata. Use this tool when the user asks in any language to recite, play, listen to, hear, or perform tilawah/qirat of a surah. Pass the user-provided surah phrase as surahName exactly as written, or pass surahNumber only when the user gave a clear numeric surah/chapter number. If the user asks to recite the Quran but does not specify a surah, call this tool without arguments so it can ask for clarification.',
     parameters: {
       type: 'object',
       properties: {
@@ -88,7 +88,7 @@ export const ISLAMIC_TOOLS = [
         },
         surahName: {
           type: 'string',
-          description: 'Optional surah name in any language or transliteration, e.g. Al-Fatihah, Ya-Sin, Ar-Rahman, Al-Mulk, ফাতিহা.',
+          description: 'Optional raw surah phrase from the user in any language or transliteration. Do not normalize or correct it before passing it.',
         },
       },
     },

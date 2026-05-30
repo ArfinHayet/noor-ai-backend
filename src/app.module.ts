@@ -6,6 +6,7 @@ import { APP_GUARD } from '@nestjs/core';
 import configuration from './config/configuration';
 import { CacheEntity } from './rag/entities/cache.entity';
 import { QuranVerseEntity } from './rag/entities/quran-verse.entity';
+import { QuranSurahEntity } from './rag/entities/quran-surah.entity';
 import { HadithEntity } from './rag/entities/hadith.entity';
 import { GeminiKeyEntity } from './rag/entities/gemini-key.entity';
 import { MessageLogEntity } from './chat/entities/message-log.entity';
@@ -27,7 +28,7 @@ import { RagModule } from './rag/rag.module';
         ssl: { rejectUnauthorized: false },
         synchronize: false,
         logging: false,
-        entities: [CacheEntity, QuranVerseEntity, HadithEntity, GeminiKeyEntity, MessageLogEntity],
+        entities: [CacheEntity, QuranVerseEntity, QuranSurahEntity, HadithEntity, GeminiKeyEntity, MessageLogEntity],
       }),
     }),
     ThrottlerModule.forRootAsync({

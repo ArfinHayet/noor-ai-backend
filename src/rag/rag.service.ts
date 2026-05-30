@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { CacheEntity } from './entities/cache.entity';
 import { QuranVerseEntity } from './entities/quran-verse.entity';
+import { QuranSurahEntity } from './entities/quran-surah.entity';
 import { HadithEntity } from './entities/hadith.entity';
 
 export interface QuranVerseRaw {
@@ -31,6 +32,16 @@ export interface QuranVerseSearchResult {
   verse_number: number;
   text_ar: string;
   translation: string | null;
+  similarity: number;
+}
+
+export interface QuranSurahRaw {
+  surah_number: number;
+  name_en: string;
+  name_bn: string;
+}
+
+export interface QuranSurahSearchResult extends QuranSurahRaw {
   similarity: number;
 }
 
@@ -68,6 +79,7 @@ export interface HadithSearchResult {
 
 const SUPPORTED_LANG_COLUMNS = new Set(['ar', 'bn', 'en', 'es', 'fr', 'id', 'ru', 'tr', 'zh']);
 const QURAN_SEARCH_THRESHOLD = 0.4;
+const QURAN_SURAH_SEARCH_THRESHOLD = 0.5;
 const HADITH_SEARCH_THRESHOLD = 0.4;
 
 @Injectable()
@@ -79,6 +91,8 @@ export class RagService implements OnModuleInit {
     private readonly cacheRepo: Repository<CacheEntity>,
     @InjectRepository(QuranVerseEntity)
     private readonly quranVerseRepo: Repository<QuranVerseEntity>,
+    @InjectRepository(QuranSurahEntity)
+    private readonly quranSurahRepo: Repository<QuranSurahEntity>,
     @InjectRepository(HadithEntity)
     private readonly hadithRepo: Repository<HadithEntity>,
     private readonly dataSource: DataSource,
@@ -126,6 +140,7 @@ export class RagService implements OnModuleInit {
       WITH (lists = 100)
     `);
     await this.ensureQuranVersesTable();
+    await this.ensureQuranSurahsTable();
     this.logger.log('Vector extension and cache table ensured');
   }
 
@@ -157,6 +172,24 @@ export class RagService implements OnModuleInit {
       WITH (lists = 100)
     `);
     this.logger.log('Quran verses table ensured');
+  }
+
+  private async ensureQuranSurahsTable(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS quran_surahs (
+        surah_number INT PRIMARY KEY,
+        name_en TEXT NOT NULL,
+        name_bn TEXT NOT NULL,
+        embedding vector(768),
+        seeded_at TIMESTAMPTZ
+      )
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS quran_surahs_embedding_idx
+      ON quran_surahs USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 20)
+    `);
+    this.logger.log('Quran surahs table ensured');
   }
 
   async searchSimilar(queryEmbedding: number[]): Promise<CachedResult | null> {
@@ -277,6 +310,79 @@ export class RagService implements OnModuleInit {
       `SELECT id FROM quran_verses WHERE embedding IS NOT NULL`,
     );
     return new Set(rows.map((r) => r.id));
+  }
+
+  async saveQuranSurah(surah: QuranSurahRaw, embedding: number[]): Promise<void> {
+    await this.dataSource.query(
+      `INSERT INTO quran_surahs (
+         surah_number, name_en, name_bn, embedding, seeded_at
+       ) VALUES ($1,$2,$3,$4::vector,NOW())
+       ON CONFLICT (surah_number) DO UPDATE SET
+         name_en = EXCLUDED.name_en,
+         name_bn = EXCLUDED.name_bn,
+         embedding = EXCLUDED.embedding,
+         seeded_at = NOW()`,
+      [
+        surah.surah_number,
+        surah.name_en,
+        surah.name_bn,
+        `[${embedding.join(',')}]`,
+      ],
+    );
+  }
+
+  async getSeededSurahNumbers(): Promise<Set<number>> {
+    const rows = await this.dataSource.query<Array<{ surah_number: string }>>(
+      `SELECT surah_number FROM quran_surahs WHERE embedding IS NOT NULL`,
+    );
+    return new Set(rows.map((r) => parseInt(r.surah_number, 10)));
+  }
+
+  async getQuranSurahByNumber(surahNumber: number): Promise<QuranSurahRaw | null> {
+    const rows = await this.dataSource.query<
+      Array<{ surah_number: string; name_en: string; name_bn: string }>
+    >(
+      `SELECT surah_number, name_en, name_bn
+       FROM quran_surahs
+       WHERE surah_number = $1
+       LIMIT 1`,
+      [surahNumber],
+    );
+
+    if (rows.length === 0) return null;
+
+    return {
+      surah_number: parseInt(rows[0].surah_number, 10),
+      name_en: rows[0].name_en,
+      name_bn: rows[0].name_bn,
+    };
+  }
+
+  async searchQuranSurah(queryEmbedding: number[], limit = 1): Promise<QuranSurahSearchResult[]> {
+    const embeddingStr = `[${queryEmbedding.join(',')}]`;
+    const rows = await this.dataSource.query<
+      Array<{ surah_number: string; name_en: string; name_bn: string; similarity: string }>
+    >(
+      `SELECT
+         surah_number,
+         name_en,
+         name_bn,
+         1 - (embedding::vector <=> $1::vector) AS similarity
+       FROM quran_surahs
+       WHERE embedding IS NOT NULL
+       ORDER BY embedding::vector <=> $1::vector
+       LIMIT $2`,
+      [embeddingStr, limit],
+    );
+
+    return rows
+      .filter((r) => parseFloat(r.similarity) >= QURAN_SURAH_SEARCH_THRESHOLD)
+      .map((r) => ({
+        surah_number: parseInt(r.surah_number, 10),
+        name_en: r.name_en,
+        name_bn: r.name_bn,
+        similarity: parseFloat(r.similarity),
+      }));
   }
 
   private async ensureHadithTable(): Promise<void> {
