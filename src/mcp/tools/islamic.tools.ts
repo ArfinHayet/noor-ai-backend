@@ -78,7 +78,7 @@ export const ISLAMIC_TOOLS = [
   },
   {
     name: 'get_quran_recitation',
-    description: 'Get an audio recitation for a requested Quran surah using semantic retrieval over stored surah metadata. Use this tool when the user asks in any language to recite, play, listen to, hear, or perform tilawah/qirat of a surah. Pass the user-provided surah phrase as surahName exactly as written, or pass surahNumber only when the user gave a clear numeric surah/chapter number. If the user asks to recite the Quran but does not specify a surah, call this tool without arguments so it can ask for clarification.',
+    description: 'Get audio for a specific Quranic passage, including a Surah, Ayah/range, named verse such as Ayatul Kursi, or recognizable Quranic dua phrase. Use for actual play/listen/recite requests, not for questions asking which reciter Noor AI supports. Pass the user-provided passage phrase exactly as written in surahName so the resolver can map named verses and dua phrases to their source Ayahs; use surahNumber only when the user gave a clear number. If the user requests audio but gives no passage, call without passage arguments so it can ask for clarification.',
     parameters: {
       type: 'object',
       properties: {
@@ -88,7 +88,7 @@ export const ISLAMIC_TOOLS = [
         },
         surahName: {
           type: 'string',
-          description: 'Optional raw surah phrase from the user in any language or transliteration. Do not normalize or correct it before passing it.',
+          description: 'Optional raw Quranic passage name or phrase from the user in any language or transliteration, including named verses and Quranic dua phrases. Do not normalize or correct it before passing it.',
         },
         startAyah: {
           type: 'string',

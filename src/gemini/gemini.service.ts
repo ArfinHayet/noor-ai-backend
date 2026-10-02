@@ -36,7 +36,7 @@ export type AgenticStreamEvent =
 
 /**
  * Represents the detected intent of a user's message.
- * - `quran_recitation` — user wants to hear/play/recite a Quran surah
+ * - `quran_recitation` — user requests audio for an identified Quranic passage
  * - `prayer_time`      — user asks for salah/namaz/prayer times
  * - `hijri_calendar`   — user asks about Hijri dates, Ramadan, Eid, or Islamic calendar
  * - `greeting`         — greetings, introductions, "how are you", "what can you do"
@@ -185,7 +185,13 @@ export class GeminiService {
       'Given the user message, return a JSON object with two fields: "intent" and "language".',
       '',
       'INTENT — choose exactly one:',
-      '  - quran_recitation : user wants to hear, play, recite, or listen to a Quran surah (tilawah/qirat/قراءة)',
+      '  - quran_recitation : ONLY when the user asks to play, hear, or recite an identified Quranic passage (tilawah/qirat/قراءة).',
+      '                       A target may be a Surah, Ayah/range, named verse such as Ayatul Kursi,',
+      '                       or a recognizable Quranic dua title/phrase. Do not require the words "Surah" or "Ayah".',
+      '                       Examples: "Play Surah Yasin", "Recite Ayatul Kursi", or "Play the dua of Yunus".',
+      '                       Reciter recommendations, supported-reciter questions, or listening/memorization preferences',
+      '                       without a specific passage are general, even if they mention hearing Quran often.',
+      '                       A generic request to play Quran without identifying a passage is general.',
       '  - prayer_time      : user asks for salah, namaz, or prayer times in any language',
       '  - hijri_calendar   : user asks about Hijri dates, Ramadan, Eid, Shawwal, Dhul Hijjah, or calendar conversion',
       '  - greeting         : ONLY pure social greetings and simple opener questions.',
@@ -209,7 +215,8 @@ export class GeminiService {
       '                         "how do you work?", "what is your knowledge source?", "can you make mistakes?",',
       '                         "are you always accurate?", "what topics can you help with?"',
       '                       • "ki kora jai ekhane?", "what can I ask you?", capability deep-dives',
-      '                       • ANY borderline case — when in doubt, use general.',,
+      '                       • Reciter availability or recommendation questions without a requested passage are general.',
+      '                       • ANY borderline case — when in doubt, use general.',
       '',
       'LANGUAGE — detect the language the user wrote in and map it to one of:',
       '  ar (Arabic), bn (Bengali), en (English), es (Spanish), fr (French),',
@@ -723,4 +730,3 @@ export class GeminiService {
     return null;
   }
 }
-

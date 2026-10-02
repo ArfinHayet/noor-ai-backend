@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "build": "nest build",
+    "test:quran-recitation": "ts-node src/scripts/test-quran-recitation.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",

@@ -9,6 +9,7 @@ import {
   QuranSurahSearchResult,
 } from '../rag/rag.service';
 import { GeminiKeyService } from '../rag/services/gemini-key.service';
+import { QURAN_AUDIO_RECITER } from './quran-audio.constants';
 
 interface PrayerTimesResponse {
   data: {
@@ -141,13 +142,6 @@ type ToolResult =
   | QuranTafsirResult
   | NotFoundResult
   | ErrorResult;
-
-const QURAN_AUDIO_RECITER = {
-  edition: 'ar.alafasy',
-  name: 'Mishary Rashid Alafasy',
-  source: 'AlQuran.cloud CDN',
-  bitrate: 128,
-};
 
 const SURAH_VERSE_COUNTS = [
   7, 286, 200, 176, 120, 165, 206, 75, 129, 109,
@@ -328,18 +322,20 @@ export class McpService {
   ): Promise<ParsedQuranQuery> {
     const prompt =
       `You are an expert Quran recitation parser.\n` +
-      `Your task is to parse a user's request for Quran audio and extract the Surah number and any specific Ayah or range of Ayahs.\n` +
+      `Your task is to parse a user's request for Quran audio and extract the source Surah number and any specific Ayah or range of Ayahs.\n` +
+      `The target may be a Surah, an Ayah, a well-known named verse, or a recognizable Quranic dua phrase; it does not need to be called a Surah.\n` +
       `User request: ${JSON.stringify(query)}\n\n` +
       `Rules:\n` +
       `1. Identify the Surah number (1 to 114) from the request. If the name of the Surah is given, map it to its canonical number (e.g., Al-Fatihah is 1, Al-Baqarah is 2, Ya-Sin is 36, etc.).\n` +
       `2. Identify the start and end Ayah numbers (1-based indices) if specified. If only a single Ayah is requested (e.g. "ayah 255"), both startAyah and endAyah should be that number.\n` +
-      `3. For famous verses, resolve them to their exact Surah and Ayah:\n` +
+      `3. For famous verses and recognizable Quranic dua phrases, resolve them to their exact source Surah and Ayah range even if the user does not say "Surah" or "Ayah":\n` +
       `   - "Ayat al-Kursi" / "Ayatul Kursi" / "آية الكرسي" / "আয়াতুল কুরসি" -> Surah 2, Ayah 255 to 255\n` +
       `   - "Amanar Rasulu" / "আমানার রাসুলু" -> Surah 2, Ayah 285 to 286\n` +
       `   - "Last two verses of Surah Al-Baqarah" -> Surah 2, Ayah 285 to 286\n` +
       `   - "Last ten verses of Ali 'Imran" -> Surah 3, Ayah 190 to 200\n` +
-      `4. If no specific Ayah or range is requested, set startAyah and endAyah to null.\n` +
-      `5. Return only strict JSON in this exact format:\n` +
+      `4. For a recognizable Quranic dua title or quoted phrase, resolve the Quranic verse or range containing it. If the target is ambiguous or is not identifiable as Quranic, return null for surahNumber rather than guessing.\n` +
+      `5. If no specific Ayah or range is requested, set startAyah and endAyah to null.\n` +
+      `6. Return only strict JSON in this exact format:\n` +
       `   {"surahNumber": number | null, "startAyah": number | null, "endAyah": number | null}`;
 
     const modelName = this.configService.get<string>('gemini.chatModel') ?? 'gemini-2.5-flash';
