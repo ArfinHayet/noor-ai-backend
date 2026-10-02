@@ -5,7 +5,7 @@ import { IpDailyLimitGuard } from '../common/guards/ip-daily-limit.guard';
 import { SupabaseAdminGuard } from '../common/guards/supabase-admin.guard';
 import { TurnstilePass, TurnstileService } from '../common/services/turnstile.service';
 import { ChatService, ChatResponse } from './chat.service';
-import { ChatDto, ChatTtsDto, TurnstilePassDto } from './dto/chat.dto';
+import { ChatDto, ChatSummarizeDto, ChatTtsDto, TurnstilePassDto } from './dto/chat.dto';
 import { GeoService } from '../common/services/geo.service';
 import { MessageLogListResult, MessageLogService } from './services/message-log.service';
 import { GeminiService } from '../gemini/gemini.service';
@@ -76,7 +76,7 @@ export class ChatController {
     }
   }
 
-  private async verifyChatAccess(dto: Pick<ChatDto, 'captchaPass' | 'captchaToken'>, ip: string): Promise<void> {
+  private async verifyChatAccess(dto: { captchaPass?: string; captchaToken?: string }, ip: string): Promise<void> {
     await this.turnstileService.verifyAccess({
       captchaPass: dto.captchaPass,
       captchaToken: dto.captchaToken,
@@ -172,6 +172,37 @@ export class ChatController {
           });
         }
       }
+    }
+  }
+
+  @Post('summarize/stream')
+  @UseGuards(IpDailyLimitGuard)
+  async summarizeStream(@Body() dto: ChatSummarizeDto, @Req() req: Request, @Res() res: Response): Promise<void> {
+    const ip = req.ip ?? '';
+    await this.verifyChatAccess(dto, ip);
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    let hasText = false;
+    let failed = false;
+
+    try {
+      for await (const event of this.chatService.summarizeStream(dto.content)) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+        if (event.type === 'chunk') hasText = true;
+        if (event.type === 'error') failed = true;
+      }
+
+      if (!hasText && !failed) {
+        res.write(`data: ${JSON.stringify({ type: 'error', message: 'Could not create a summary. Please try again.' })}\n\n`);
+      }
+    } catch (error) {
+      console.error('Summary stream failed:', error instanceof Error ? error.message : error);
+      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Could not create a summary. Please try again.' })}\n\n`);
+    } finally {
+      if (!res.writableEnded) res.end();
     }
   }
 

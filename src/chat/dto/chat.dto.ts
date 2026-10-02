@@ -21,6 +21,25 @@ export class ChatDto {
   captchaPass?: string;
 }
 
+export class ChatSummarizeDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  content: string;
+
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
+  @IsString()
+  @IsOptional()
+  captchaToken?: string;
+
+  @IsString()
+  @IsOptional()
+  captchaPass?: string;
+}
+
 export class TurnstilePassDto {
   @IsString()
   @IsNotEmpty()
