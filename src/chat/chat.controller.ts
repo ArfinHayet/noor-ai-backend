@@ -185,23 +185,51 @@ export class ChatController {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    const summaryChunks: string[] = [];
     let hasText = false;
-    let failed = false;
+    let failureReason: string | null = null;
 
     try {
       for await (const event of this.chatService.summarizeStream(dto.content)) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
-        if (event.type === 'chunk') hasText = true;
-        if (event.type === 'error') failed = true;
+
+        if (event.type === 'chunk') {
+          summaryChunks.push(event.text);
+          hasText = true;
+        }
+        if (event.type === 'error') {
+          failureReason = event.message || 'Summary stream error';
+        }
       }
 
-      if (!hasText && !failed) {
-        res.write(`data: ${JSON.stringify({ type: 'error', message: 'Could not create a summary. Please try again.' })}\n\n`);
+      if (!hasText && !failureReason) {
+        failureReason = 'empty_response: summary stream completed with no text';
+        res.write(
+          `data: ${JSON.stringify({
+            type: 'error',
+            message: 'Could not create a summary. Please try again.',
+          })}\n\n`,
+        );
       }
     } catch (error) {
-      console.error('Summary stream failed:', error instanceof Error ? error.message : error);
-      res.write(`data: ${JSON.stringify({ type: 'error', message: 'Could not create a summary. Please try again.' })}\n\n`);
+      failureReason = error instanceof Error ? error.message : String(error);
+      console.error('Summary stream failed:', failureReason);
+      res.write(
+        `data: ${JSON.stringify({
+          type: 'error',
+          message: 'Could not create a summary. Please try again.',
+        })}\n\n`,
+      );
     } finally {
+      await this.persistMessageLog({
+        userId: dto.userId,
+        ipAddress: ip,
+        message: dto.content,
+        response: summaryChunks.join('') || null,
+        source: 'summary',
+        failureReason,
+      });
+
       if (!res.writableEnded) res.end();
     }
   }
